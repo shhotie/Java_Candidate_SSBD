@@ -25,8 +25,11 @@ public class EarthquakeService {
     @Autowired
     private EarthquakeRepository repository;
 
-    // DateTime formatter for parsing the datetime and datetimeFM columns
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
+    // DateTime formatter for datetime without microseconds
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX");
+
+    // Secondary DateTime formatter for datetime with microseconds
+    private static final DateTimeFormatter DATE_TIME_FORMATTER_MICROSECONDS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSXXX");
 
     // Batch size for efficient database saving
     private static final int BATCH_SIZE = 1000;
@@ -36,7 +39,8 @@ public class EarthquakeService {
         List<EarthquakeEvent> events = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
             String line;
-            boolean isFirstLine = true; // Flag to skip the header
+            boolean isFirstLine = true;
+
             while ((line = reader.readLine()) != null) {
                 // Skip the header line
                 if (isFirstLine) {
@@ -45,46 +49,63 @@ public class EarthquakeService {
                 }
 
                 String[] fields = line.split("\t"); // Assuming TSV (tab-separated values)
-
-                // Initialize a new EarthquakeEvent object and set its fields
-                EarthquakeEvent event = new EarthquakeEvent();
-                event.setEventID(fields[0]);
-
-                // Parse the datetime field
-                try {
-                    event.setDatetime(OffsetDateTime.parse(fields[1], DATE_TIME_FORMATTER));
-                } catch (DateTimeParseException e) {
-                    System.err.println("Invalid datetime format: " + fields[1]);
-                    continue;  // Skip this record if date is invalid
+                if (fields.length == 0) {
+                    continue; // Skip empty lines
                 }
 
-                // Parse other fields
-                event.setLatitude(parseDouble(fields[2]));
-                event.setLongitude(parseDouble(fields[3]));
-                event.setMagnitude(parseDouble(fields[4]));
-                event.setMag_type(fields[5]);
-                event.setDepth(parseDouble(fields[6]));
-                event.setPhasecount(parseInteger(fields[7]));
-                event.setAzimuth_gap(parseDouble(fields[8]));
-                event.setLocation(fields[9]);
-//                event.setAgency(fields[10]);
-//
-//                // Optionally parse FM-related fields if they exist
-//                if (fields.length > 11) {
-//                    try {
-//                        event.setDatetimeFM(fields[11].isEmpty() ? null : OffsetDateTime.parse(fields[11], DATE_TIME_FORMATTER));
-//                        event.setLatFM(parseDouble(fields[12]));
-//                        event.setLonFM(parseDouble(fields[13]));
-//                        event.setMagFM(parseDouble(fields[14]));
-//                        event.setMagTypeFM(fields[15]);
-//                        event.setDepthFM(parseDouble(fields[16]));
-//                        event.setPhasecountFM(parseInteger(fields[17]));
-//                        event.setAzgapFM(parseDouble(fields[18]));
-//                        // Set other fields similarly...
-//                    } catch (DateTimeParseException e) {
-//                        System.err.println("Invalid FM datetime format: " + fields[11]);
-//                    }
-//                }
+                EarthquakeEvent event = new EarthquakeEvent();
+
+                // Set fields dynamically based on available columns
+                event.setEventID(fields[0]);
+
+                if (fields.length > 1) {
+                    try {
+                        // Try parsing without microseconds first
+                        event.setDatetime(OffsetDateTime.parse(fields[1], DATE_TIME_FORMATTER));
+                    } catch (DateTimeParseException e1) {
+                        try {
+                            // Try parsing with microseconds if the first fails
+                            event.setDatetime(OffsetDateTime.parse(fields[1], DATE_TIME_FORMATTER_MICROSECONDS));
+                        } catch (DateTimeParseException e2) {
+                            System.err.println("Invalid datetime format: " + fields[1]);
+                            continue;  // Skip this record if datetime is invalid
+                        }
+                    }
+                }
+
+                if (fields.length > 2) event.setLatitude(parseDouble(fields[2]));
+                if (fields.length > 3) event.setLongitude(parseDouble(fields[3]));
+                if (fields.length > 4) event.setMagnitude(parseDouble(fields[4]));
+                if (fields.length > 5) event.setMag_type(fields[5]);
+                if (fields.length > 6) event.setDepth(parseDouble(fields[6]));
+                if (fields.length > 7) event.setPhasecount(parseInteger(fields[7]));
+                if (fields.length > 8) event.setAzimuth_gap(parseDouble(fields[8]));
+                if (fields.length > 9) event.setLocation(fields[9]);
+
+                // Optionally set agency if it exists
+                if (fields.length > 10) {
+                    event.setAgency(fields[10]);
+                }
+
+                // Optionally parse FM-related fields if they exist
+                if (fields.length > 11) {
+                    try {
+                        try {
+                            event.setDatetimeFM(OffsetDateTime.parse(fields[11]));  // Assuming it's at index 11
+                        } catch (DateTimeParseException e) {
+                            System.err.println("Invalid FM datetime format: " + fields[11]);
+                        }
+                        if (fields.length > 12) event.setLatFM(parseDouble(fields[12]));
+                        if (fields.length > 13) event.setLonFM(parseDouble(fields[13]));
+                        if (fields.length > 14) event.setMagFM(parseDouble(fields[14]));
+                        if (fields.length > 15) event.setMagTypeFM(fields[15]);
+                        if (fields.length > 16) event.setDepthFM(parseDouble(fields[16]));
+                        if (fields.length > 17) event.setPhasecountFM(parseInteger(fields[17]));
+                        if (fields.length > 18) event.setAzgapFM(parseDouble(fields[18]));
+                    } catch (DateTimeParseException e) {
+                        System.err.println("Invalid FM datetime format: " + fields[11]);
+                    }
+                }
 
                 // Add the event to the list
                 events.add(event);
@@ -104,6 +125,7 @@ public class EarthquakeService {
             e.printStackTrace();
         }
     }
+
 
     // Helper methods to handle parsing with defaults
     private Double parseDouble(String value) {
